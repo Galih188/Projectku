@@ -12,6 +12,7 @@ import {
 } from "../push-notification";
 import {
   subscribe,
+  unsubscribe,
   isCurrentPushSubscriptionAvailable,
 } from "../utils/notification-helper";
 
@@ -117,21 +118,40 @@ class App {
     const pushNotificationTools = document.getElementById(
       "push-notification-tools"
     );
+
+    if (!pushNotificationTools) return;
+
     const isSubscribed = await isCurrentPushSubscriptionAvailable();
 
     if (isSubscribed) {
       pushNotificationTools.innerHTML = generateUnsubscribeButtonTemplate();
+
+      // Menambahkan event listener untuk unsubscribe button
+      const unsubscribeButton = document.getElementById("unsubscribe-button");
+      if (unsubscribeButton) {
+        unsubscribeButton.addEventListener("click", async () => {
+          const success = await unsubscribe();
+          if (success) {
+            // Refresh tampilan tools jika berhasil unsubscribe
+            this.#setupPushNotification();
+          }
+        });
+      }
+
       return;
     }
 
     pushNotificationTools.innerHTML = generateSubscribeButtonTemplate();
-    document
-      .getElementById("subscribe-button")
-      .addEventListener("click", () => {
-        subscribe().finally(() => {
+    const subscribeButton = document.getElementById("subscribe-button");
+    if (subscribeButton) {
+      subscribeButton.addEventListener("click", async () => {
+        const success = await subscribe();
+        if (success) {
+          // Refresh tampilan tools jika berhasil subscribe
           this.#setupPushNotification();
-        });
+        }
       });
+    }
   }
 
   async renderPage() {
