@@ -6,7 +6,7 @@ import L from "leaflet";
 window.L = L; // agar bisa dipakai di class halaman
 
 import App from "./pages/app";
-import { registerServiceWorker } from "./utils";
+import { registerServiceWorker } from "./utils/service-worker-registration";
 
 document.addEventListener("DOMContentLoaded", async () => {
   const app = new App({
@@ -14,9 +14,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     drawerButton: document.querySelector("#drawer-button"),
     navigationDrawer: document.querySelector("#navigation-drawer"),
   });
-  await app.renderPage();
 
-  await registerServiceWorker();
+  // Register service worker first
+  try {
+    await registerServiceWorker();
+    console.log("Service worker registered successfully");
+  } catch (error) {
+    console.error("Failed to register service worker:", error);
+  }
+
+  // Then render the app
+  await app.renderPage();
 
   window.addEventListener("hashchange", async () => {
     await app.renderPage();
