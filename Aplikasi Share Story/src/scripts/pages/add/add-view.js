@@ -1,4 +1,18 @@
 class AddStoryView {
+  #stream;
+  #callbacks;
+  #photoData;
+  #marker;
+  #map;
+
+  constructor() {
+    this.#stream = null;
+    this.#callbacks = {};
+    this.#photoData = null;
+    this.#marker = null;
+    this.#map = null;
+  }
+
   getTemplate() {
     return `
         <section class="container">
@@ -35,6 +49,22 @@ class AddStoryView {
       `;
   }
 
+  init({ onPhotoCapture, onSubmit }) {
+    // Store callbacks
+    this.#callbacks = {
+      onPhotoCapture,
+      onSubmit,
+    };
+
+    // Set up form submission
+    const form = document.getElementById("story-form");
+    form.addEventListener("submit", (e) => this.#handleSubmit(e));
+
+    // Set up photo button
+    const takePhotoBtn = document.getElementById("take-photo");
+    takePhotoBtn.addEventListener("click", () => this.capturePhoto());
+  }
+
   async initCamera() {
     const cameraEl = document.getElementById("camera");
     const cameraFallbackEl = document.getElementById("camera-fallback");
@@ -58,20 +88,24 @@ class AddStoryView {
             preview.src = e.target.result;
             previewContainer.style.display = "block";
             takePhotoBtn.textContent = "Ganti Foto";
-            this._photoData = e.target.result;
+            this.#photoData = e.target.result;
+
+            // Notify presenter about the photo data
+            if (this.#callbacks.onPhotoCapture) {
+              this.#callbacks.onPhotoCapture(e.target.result);
+            }
           };
           reader.readAsDataURL(file);
         }
       });
 
-      // No stream to return in fallback mode
-      return null;
+      return;
     }
 
     try {
       cameraEl.style.display = "block";
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      return stream;
+      this.#stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraEl.srcObject = this.#stream;
     } catch (err) {
       console.error("Error accessing camera:", err);
       cameraEl.style.display = "none";
@@ -86,45 +120,54 @@ class AddStoryView {
             preview.src = e.target.result;
             previewContainer.style.display = "block";
             takePhotoBtn.textContent = "Ganti Foto";
-            this._photoData = e.target.result;
+            this.#photoData = e.target.result;
+
+            // Notify presenter about the photo data
+            if (this.#callbacks.onPhotoCapture) {
+              this.#callbacks.onPhotoCapture(e.target.result);
+            }
           };
           reader.readAsDataURL(file);
         }
       });
-
-      return null;
     }
   }
 
   initMap() {
     try {
       // Instance map
-      const map = L.map("map").setView([-2.5, 118], 5);
+      this.#map = L.map("map").setView([-2.5, 118], 5);
 
       // Title layer
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      }).addTo(map);
+      }).addTo(this.#map);
 
-      // Paksa update ukuran map setelah mount
+      // Setup map click event
+      this.#setupMapClickHandler();
+
+      // Force map size update after mount
       setTimeout(() => {
-        map.invalidateSize();
-      }, 100);
+        this.#map.invalidateSize();
 
-      return map;
+        // Check if coordinates are already stored
+        this.#restoreMapMarker();
+      }, 200);
     } catch (error) {
       console.error("Error initializing map:", error);
       document.getElementById("map").innerHTML =
         "<p>Tidak dapat memuat peta. Silakan coba lagi nanti.</p>";
-      return null;
     }
   }
 
-  handleMapClick(map, latInput, lonInput) {
-    if (!map) return;
+  #setupMapClickHandler() {
+    if (!this.#map) return;
 
-    // Buat custom icon untuk marker
+    const latInput = document.getElementById("lat");
+    const lonInput = document.getElementById("lon");
+
+    // Create custom icon for marker
     const customIcon = L.icon({
       iconUrl:
         "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzODQgNTEyIj48IS0tIUZvbnQgQXdlc29tZSBGcmVlIDYuNS4xIGJ5IEBmb250YXdlc29tZSAtIGh0dHBzOi8vZm9udGF3ZXNvbWUuY29tIExpY2Vuc2UgLSBodHRwczovL2ZvbnRhd2Vzb21lLmNvbS9saWNlbnNlL2ZyZWUgQ29weXJpZ2h0IDIwMjQgRm9udGljb25zLCBJbmMuLS0+PHBhdGggZmlsbD0iI2Q5NzcwNiIgZD0iTTIxNS43IDQ5OS4yQzI2Ny4yIDQzNSAzODQgMjc5LjQgMzg0IDE5MkMzODQgODYgMjk4IDAgMTkyIDBTMCA4NiAwIDE5MmMwIDg3LjQgMTE2LjggMjQzIDIxNi4zIDMwNy4yYzUuOCA0LjAgMTMuNiA0LjAgMTkuNCAwek0xOTIgMTI4YTY0IDY0IDAgMSAxIDAgMTI4IDY0IDY0IDAgMSAxIDAtMTI4eiIvPjwvc3ZnPg==",
@@ -133,50 +176,128 @@ class AddStoryView {
       popupAnchor: [1, -34],
     });
 
-    let marker = null;
-    map.on("click", function (e) {
+    this.#map.on("click", (e) => {
       latInput.value = e.latlng.lat;
       lonInput.value = e.latlng.lng;
 
-      if (marker) map.removeLayer(marker);
-      marker = L.marker(e.latlng, { icon: customIcon }).addTo(map);
+      if (this.#marker) this.#map.removeLayer(this.#marker);
+      this.#marker = L.marker(e.latlng, { icon: customIcon }).addTo(this.#map);
 
-      marker.bindPopup("Lokasi cerita dipilih").openPopup();
+      this.#marker.bindPopup("Lokasi cerita dipilih").openPopup();
     });
+  }
 
-    // Jika sudah ada koordinat yang tersimpan, tampilkan marker
+  #restoreMapMarker() {
+    if (!this.#map) return;
+
+    const latInput = document.getElementById("lat");
+    const lonInput = document.getElementById("lon");
+
+    // If coordinates are already stored, display marker
     if (latInput.value && lonInput.value) {
       const lat = parseFloat(latInput.value);
       const lon = parseFloat(lonInput.value);
+
       if (!isNaN(lat) && !isNaN(lon)) {
-        marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
-        marker.bindPopup("Lokasi cerita dipilih").openPopup();
-        map.setView([lat, lon], 13);
+        // Create custom icon for marker
+        const customIcon = L.icon({
+          iconUrl:
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzODQgNTEyIj48IS0tIUZvbnQgQXdlc29tZSBGcmVlIDYuNS4xIGJ5IEBmb250YXdlc29tZSAtIGh0dHBzOi8vZm9udGF3ZXNvbWUuY29tIExpY2Vuc2UgLSBodHRwczovL2ZvbnRhd2Vzb21lLmNvbS9saWNlbnNlL2ZyZWUgQ29weXJpZ2h0IDIwMjQgRm9udGljb25zLCBJbmMuLS0+PHBhdGggZmlsbD0iI2Q5NzcwNiIgZD0iTTIxNS43IDQ5OS4yQzI2Ny4yIDQzNSAzODQgMjc5LjQgMzg0IDE5MkMzODQgODYgMjk4IDAgMTkyIDBTMCA4NiAwIDE5MmMwIDg3LjQgMTE2LjggMjQzIDIxNi4zIDMwNy4yYzUuOCA0LjAgMTMuNiA0LjAgMTkuNCAwek0xOTIgMTI4YTY0IDY0IDAgMSAxIDAgMTI4IDY0IDY0IDAgMSAxIDAtMTI4eiIvPjwvc3ZnPg==",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+        });
+
+        this.#marker = L.marker([lat, lon], { icon: customIcon }).addTo(
+          this.#map
+        );
+        this.#marker.bindPopup("Lokasi cerita dipilih").openPopup();
+        this.#map.setView([lat, lon], 13);
       }
     }
   }
 
-  capturePhoto(video, canvas) {
+  capturePhoto() {
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("snapshot");
     const previewContainer = document.getElementById("preview-container");
     const preview = document.getElementById("preview");
+    const takePhotoBtn = document.getElementById("take-photo");
+    const fileInput = document.getElementById("file-input");
 
+    // Check if using file input (camera not available)
     if (!video || video.style.display === "none") {
-      // Return stored photo data from file input if camera is not used
-      return this._photoData;
+      // If file is already selected
+      if (fileInput && fileInput.files.length > 0) {
+        return this.#photoData;
+      }
+
+      // Otherwise, trigger file input
+      if (fileInput) {
+        fileInput.click();
+      }
+      return null;
     }
 
+    // Capture from camera
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    canvas.hidden = false;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0);
 
     const dataUrl = canvas.toDataURL("image/jpeg");
+
+    // Store photo data
+    this.#photoData = dataUrl;
+
+    // Update button text
+    takePhotoBtn.textContent = "Ganti Foto";
 
     // Show preview
     preview.src = dataUrl;
     previewContainer.style.display = "block";
 
+    // Notify presenter
+    if (this.#callbacks.onPhotoCapture) {
+      this.#callbacks.onPhotoCapture(dataUrl);
+    }
+
     return dataUrl;
+  }
+
+  #handleSubmit(e) {
+    e.preventDefault();
+
+    const description = document.getElementById("description").value;
+    const lat = document.getElementById("lat").value || null;
+    const lon = document.getElementById("lon").value || null;
+    const fileInput = document.getElementById("file-input");
+
+    // Prepare file data from input if available
+    let fileData = null;
+    if (fileInput && fileInput.files.length > 0) {
+      // We'll use the stored photoData since it's already processed by the file input handler
+      fileData = this.#photoData;
+    }
+
+    // Forward to presenter via callback
+    if (this.#callbacks.onSubmit) {
+      this.#callbacks.onSubmit({
+        description,
+        lat,
+        lon,
+        fileData,
+      });
+    }
+  }
+
+  cleanupResources() {
+    // Stop camera stream if active
+    if (this.#stream) {
+      this.#stream.getTracks().forEach((track) => track.stop());
+      this.#stream = null;
+      console.log("Camera stream stopped");
+    }
   }
 
   showLoading() {

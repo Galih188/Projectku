@@ -6,7 +6,14 @@ import {
   transitionHelper,
   isServiceWorkerAvailable,
 } from "../utils";
-import { generateSubscribeButtonTemplate } from "../push-notification";
+import {
+  generateSubscribeButtonTemplate,
+  generateUnsubscribeButtonTemplate,
+} from "../push-notification";
+import {
+  subscribe,
+  isCurrentPushSubscriptionAvailable,
+} from "../utils/notification-helper";
 
 class App {
   #content = null;
@@ -72,6 +79,7 @@ class App {
     // Untuk autetikasi user
     if (token) {
       navList.innerHTML = `
+        <li><a href="#" id="push-notification-tools" class="push-notification-tools"></a></li>
         <li><a href="#/">Beranda</a></li>
         <li><a href="#/about">About</a></li>
         <li><a href="#/add">Tambah Cerita</a></li>
@@ -102,6 +110,28 @@ class App {
     localStorage.removeItem("token");
     window.location.hash = "/login";
     this._updateNavigation();
+  }
+
+  // Push Notification
+  async #setupPushNotification() {
+    const pushNotificationTools = document.getElementById(
+      "push-notification-tools"
+    );
+    const isSubscribed = await isCurrentPushSubscriptionAvailable();
+
+    if (isSubscribed) {
+      pushNotificationTools.innerHTML = generateUnsubscribeButtonTemplate();
+      return;
+    }
+
+    pushNotificationTools.innerHTML = generateSubscribeButtonTemplate();
+    document
+      .getElementById("subscribe-button")
+      .addEventListener("click", () => {
+        subscribe().finally(() => {
+          this.#setupPushNotification();
+        });
+      });
   }
 
   async renderPage() {
@@ -142,6 +172,12 @@ class App {
       transition.updateCallbackDone.then(() => {
         scrollTo({ top: 0, behavior: "instant" });
         this._setupNavigationList();
+
+        // Periksa token sebelum memanggil setupPushNotification
+        const token = localStorage.getItem("token");
+        if (token && isServiceWorkerAvailable()) {
+          this.#setupPushNotification();
+        }
       });
     } catch (error) {
       console.error("Error rendering page:", error);
@@ -193,8 +229,6 @@ class App {
     // Metode ini dipanggil setelah perenderan halaman untuk memastikan item navigasi baru diatur dengan benar
     this._updateNavigation();
   }
-
-  // Push Notification
 }
 
 export default App;

@@ -16,6 +16,7 @@ class StoryModel {
       }
 
       const { listStory } = await response.json();
+
       return listStory;
     } catch (error) {
       console.error("Error fetching stories:", error);
