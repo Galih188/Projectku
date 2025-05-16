@@ -63,13 +63,19 @@ class AddStoryPresenter {
         lon: lon,
       });
 
+      // Menampilkan pesan sukses
       this.#view.showSuccessMessage(result.message);
+
+      // Jika story berhasil dibuat, server otomatis akan mengirim notifikasi
+      // ke semua subscriber jika user telah melakukan subscribe push notification
 
       // Cleanup resources before redirect
       this.cleanup();
 
-      // Redirect to home page
-      window.location.hash = "/";
+      // Redirect to home page after short delay to allow notification processing
+      setTimeout(() => {
+        window.location.hash = "/";
+      }, 500);
     } catch (error) {
       this.#view.showErrorMessage(error.message);
     } finally {
@@ -80,21 +86,6 @@ class AddStoryPresenter {
   // Method to clean up resources
   cleanup() {
     this.#view.cleanupResources();
-  }
-
-  async notifyMe() {
-    try {
-      const response = await this.#model.sendReportToMeViaNotification(
-        this.#view
-      );
-      if (!response.ok) {
-        console.error("notifyMe: response:", response);
-        return;
-      }
-      console.log("notifyMe:", response.message);
-    } catch (error) {
-      console.error("notifyMe: error:", error);
-    }
   }
 }
 
