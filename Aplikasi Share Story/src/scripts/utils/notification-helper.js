@@ -1,6 +1,9 @@
 import { convertBase64ToUint8Array } from "../utils/index";
 import { VAPID_PUBLIC_KEY } from "../config";
-import { subscribePushNotification } from "../data/api";
+import {
+  subscribePushNotification,
+  unsubscribePushNotification,
+} from "../data/api";
 
 export function isNotificationAvailable() {
   return "Notification" in window;
@@ -36,8 +39,17 @@ export async function requestNotificationPermission() {
 }
 
 export async function getPushSubscription() {
-  const registration = await navigator.serviceWorker.getRegistration();
-  return await registration.pushManager.getSubscription();
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration) {
+      console.error("Service worker tidak terdaftar");
+      return null;
+    }
+    return await registration.pushManager.getSubscription();
+  } catch (error) {
+    console.error("Error getting push subscription:", error);
+    return null;
+  }
 }
 
 export async function isCurrentPushSubscriptionAvailable() {
@@ -67,12 +79,20 @@ export async function subscribe() {
     "Langganan push notification gagal diaktifkan.";
   const successSubscribeMessage =
     "Langganan push notification berhasil diaktifkan.";
-  let pushSubscription;
+
   try {
-    const registration = await navigator.serviceWorker.getRegistration();
-    pushSubscription = await registration.pushManager.subscribe(
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration) {
+      alert(
+        "Service worker tidak terdaftar. Muat ulang halaman dan coba lagi."
+      );
+      return;
+    }
+
+    const pushSubscription = await registration.pushManager.subscribe(
       generateSubscribeOptions()
     );
+
     const { endpoint, keys } = pushSubscription.toJSON();
 
     const response = await subscribePushNotification({ endpoint, keys });
@@ -82,16 +102,42 @@ export async function subscribe() {
 
       // Undo subscribe to push notification
       await pushSubscription.unsubscribe();
-
       return;
     }
 
     alert(successSubscribeMessage);
+    return true;
   } catch (error) {
     console.error("subscribe: error:", error);
     alert(failureSubscribeMessage);
+    return false;
+  }
+}
 
-    // Undo subscribe to push notification
-    await pushSubscription.unsubscribe();
+export async function unsubscribe() {
+  try {
+    const subscription = await getPushSubscription();
+    if (!subscription) {
+      alert("Anda belum berlangganan notifikasi.");
+      return false;
+    }
+
+    const { endpoint } = subscription.toJSON();
+    const response = await unsubscribePushNotification({ endpoint });
+
+    if (!response.ok) {
+      console.error("unsubscribe: response:", response);
+      alert("Gagal berhenti berlangganan push notification.");
+      return false;
+    }
+
+    // Unsubscribe dari browser
+    await subscription.unsubscribe();
+    alert("Berhasil berhenti berlangganan push notification.");
+    return true;
+  } catch (error) {
+    console.error("unsubscribe: error:", error);
+    alert("Gagal berhenti berlangganan push notification.");
+    return false;
   }
 }
